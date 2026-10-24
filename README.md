@@ -10,7 +10,7 @@
 - Bundled wine runner, set up automatically
 - D3DMetal by default, DXMT for mods
 - macOS Game Mode support
-- Built-in mod loader and mod manager
+- Built-in ZZMI support and mod manager
 - Directly launch the game from Launchpad, Spotlight or the Dock
 - MetalFX, DirectX 12 and the Metal HUD
 
@@ -32,7 +32,7 @@ You need:
 
 - [Xcode](https://apps.apple.com/us/app/xcode/id497799835) 26 or later
 - [Rust](https://rustup.rs), stable
-- Optional: `mingw-w64` (`brew install mingw-w64`) to rebuild the mod injector. A prebuilt copy is included with the repo.
+- Optional: `mingw-w64` (`brew install mingw-w64`) to rebuild the ZZMI injector. A prebuilt copy is included with the repo.
 - Optional: `create-dmg` (`brew install create-dmg`) to build the dmg image
 
 Build the app into `dist/Asahiro.app`:
@@ -53,7 +53,7 @@ Build the dmg image into `dist/Asahiro-<version>.dmg`:
 - [DXMT](https://github.com/3Shain/dxmt)
 - [CodeWeavers](https://www.codeweavers.com) for CrossOver, and the [Wine](https://www.winehq.org) project
 - Apple for D3DMetal
-- [XXMI](https://github.com/SpectrumQT/XXMI-Launcher) and [3DMigoto](https://github.com/bo3b/3Dmigoto)
+- [ZZMI](https://github.com/leotorrez/ZZMI-Package), [XXMI](https://github.com/SpectrumQT/XXMI-Launcher) and [3DMigoto](https://github.com/bo3b/3Dmigoto)
 - [HDiffPatch](https://github.com/sisong/HDiffPatch)
 - [Chakra Petch](https://fonts.google.com/specimen/Chakra+Petch) by Cadson Demak
 
