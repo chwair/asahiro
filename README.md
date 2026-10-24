@@ -1,7 +1,7 @@
 <div align="center">
 <img src="docs/logo.png" width="128" height="128" alt="Asahiro logo">
 <h1>Asahiro</h1>
-<p>A macOS launcher for a Zertain Zanime Zame</p>
+<p>A macOS launcher for a ZZZertain Anime Game</p>
 </div>
 
 ## Features
