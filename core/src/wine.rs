@@ -612,6 +612,10 @@ pub fn launch(task: &Task, cfg: &Config) -> Result<()> {
     rn.wait_idle(cfg);
     let mut c = rn.wine(cfg, Some(&dir));
     apply_hooks(task, cfg, &rn, &mut c);
+    // d3dmetal's d3d12 path corrupts unity's glyph atlas now and then, keeping resources alive until the gpu is done fixes it
+    if cfg.use_d3d12 && cfg.bottle.graphics_backend == GraphicsBackend::D3dmetal && !cfg.bottle.env.contains_key("D3DM_RETAIN_REFERENCES") {
+        c.env("D3DM_RETAIN_REFERENCES", "1");
+    }
     if let Some(o) = dll_overrides(cfg, mods) {
         rn.dll_overrides(&mut c, &o);
     }
