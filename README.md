@@ -13,6 +13,7 @@
 - Built-in ZZMI support and mod manager
 - Directly launch the game from Launchpad, Spotlight or the Dock
 - MetalFX, DirectX 12 and the Metal HUD
+- Frame cap with even frame pacing on both D3DMetal and DXMT
 
 ## Using Asahiro
 

@@ -327,9 +327,17 @@ struct SettingsView: View {
             SettingsToggle(title: "Metal performance HUD", isOn: c.bottle.metalHud)
             SettingsToggle(title: "MetalFX upscaling", subtitle: "D3DMetal only.", isOn: c.bottle.metalfx)
                 .disabled(!d3dmetal)
-            SettingsToggle(title: "DirectX 12", subtitle: "D3DMetal only.", isOn: c.useD3d12)
+            SettingsToggle(title: "DirectX 12", subtitle: "D3DMetal only. Precompiles shaders, so far less stutter.", isOn: c.useD3d12)
                 .disabled(!d3dmetal)
             SettingsToggle(title: "DLSS and NVAPI extensions", isOn: c.bottle.dlss)
+        }
+        let paced = c.wrappedValue.bottle.graphicsBackend == GraphicsBackend.dxmt.rawValue || (d3dmetal && bundled)
+        SettingsGroup(header: "Frame pacing",
+                      footer: "Holds every frame on screen for the same time, which smooths out an uneven frame time graph. Keep V-Sync on in the game and set its frame rate to match or higher.") {
+            SettingsMenu(title: "Frame cap", subtitle: paced ? nil : "DXMT, or D3DMetal on the bundled runner.",
+                         selection: c.frameCap,
+                         options: [(0, "Off"), (30, "30 fps"), (40, "40 fps"), (45, "45 fps"), (60, "60 fps"), (90, "90 fps"), (120, "120 fps")])
+                .disabled(!paced)
         }
     }
 

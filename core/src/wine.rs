@@ -484,6 +484,39 @@ fn launch_args(cfg: &Config) -> Vec<String> {
     args
 }
 
+// dxmt paces presents itself, d3dmetal gets the same from our hooks swapping in presentDrawable:afterMinimumDuration:.
+// the hooks also put the game bundle's icon in the dock. crossover's wine is a perl script, and macos strips DYLD_ variables
+// from system binaries, so they only load on the bundled runner
+fn apply_hooks(task: &Task, cfg: &Config, rn: &Runner, c: &mut Command) {
+    let b = &cfg.bottle;
+    if cfg.frame_cap > 0 && b.graphics_backend == GraphicsBackend::Dxmt && !b.env.contains_key("DXMT_CONFIG") {
+        c.env("DXMT_CONFIG", format!("d3d11.preferredMaxFrameRate={}", cfg.frame_cap));
+    }
+    if !matches!(rn, Runner::Bundled(_)) {
+        return;
+    }
+    let pace = cfg.frame_cap > 0 && b.graphics_backend == GraphicsBackend::D3dmetal;
+    let icon = runner::game_app_icon();
+    if !pace && icon.is_none() {
+        return;
+    }
+    let p = match runner::hooks_path() {
+        Ok(p) => p,
+        Err(e) => return task.log(format!("hooks skipped: {}", e)),
+    };
+    let mut libs = p.to_string_lossy().into_owned();
+    if let Some(user) = b.env.get("DYLD_INSERT_LIBRARIES").filter(|v| !v.trim().is_empty()) {
+        libs = format!("{}:{}", libs, user.trim());
+    }
+    c.env("DYLD_INSERT_LIBRARIES", libs);
+    if pace {
+        c.env("ASAHIRO_FRAME_CAP", cfg.frame_cap.to_string());
+    }
+    if let Some(icon) = icon {
+        c.env("ASAHIRO_DOCK_ICON", icon);
+    }
+}
+
 // zzmi needs native d3d11 so the 3dmigoto dll loaded by path is not swapped for the builtin one
 fn dll_overrides(cfg: &Config, mods: bool) -> Option<String> {
     let user = cfg.bottle.dll_overrides.trim();
@@ -578,6 +611,7 @@ pub fn launch(task: &Task, cfg: &Config) -> Result<()> {
     let log = std::fs::File::create(&log_path)?;
     rn.wait_idle(cfg);
     let mut c = rn.wine(cfg, Some(&dir));
+    apply_hooks(task, cfg, &rn, &mut c);
     if let Some(o) = dll_overrides(cfg, mods) {
         rn.dll_overrides(&mut c, &o);
     }

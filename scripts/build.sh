@@ -8,6 +8,8 @@ export MACOSX_DEPLOYMENT_TARGET=26.0
 if command -v x86_64-w64-mingw32-gcc >/dev/null; then
     x86_64-w64-mingw32-gcc -O2 -municode -static -s -Wall -o app/Resources/bin/asahiro-inject.exe app/inject/asahiro-inject.c
 fi
+# the frame pacer and dock icon hooks load into the x86_64 wine, the core embeds the committed dylib like the injector
+xcrun clang -arch x86_64 -O2 -Wall -fno-objc-arc -dynamiclib -lobjc -o app/Resources/bin/libasahiro-hooks.dylib app/hooks/asahiro-hooks.m
 cargo build --release --manifest-path core/Cargo.toml
 rm -f app/.build/release/Asahiro
 swift build -c release --package-path app

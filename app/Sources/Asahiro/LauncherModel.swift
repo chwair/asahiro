@@ -92,6 +92,9 @@ final class LauncherModel: ObservableObject {
     func loadArt() async {
         do {
             art = try await Core.call(["cmd": "get_art", "language": "en-us"], as: Art.self)
+            if let icon = art?.local.shortcutIcon {
+                DispatchQueue.global(qos: .utility).async { GameShortcut.updateGameIcon(source: icon) }
+            }
         } catch {
             offline = error.localizedDescription
         }

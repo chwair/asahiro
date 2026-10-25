@@ -122,6 +122,26 @@ enum GameShortcut {
         }
     }
 
+    // the game's own bundle, which wine runs from, shows the same icon in the dock. core copies it in at launch
+    static var gameIconURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Asahiro/game-icon.icns")
+    }
+
+    // only renders again when the launcher hands out different art
+    static func updateGameIcon(source: String) {
+        let marker = gameIconURL.appendingPathExtension("source")
+        if FileManager.default.fileExists(atPath: gameIconURL.path),
+           (try? String(contentsOf: marker, encoding: .utf8)) == source { return }
+        guard let image = NSImage(contentsOfFile: source) else { return }
+        do {
+            try writeIcon(image, to: gameIconURL)
+            try source.write(to: marker, atomically: true, encoding: .utf8)
+        } catch {
+            return
+        }
+    }
+
     // the windows shortcut art is a full bleed square, macos icons sit inset in a rounded square
     private static func writeIcon(_ image: NSImage, to icns: URL) throws {
         let fm = FileManager.default

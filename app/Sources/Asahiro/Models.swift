@@ -39,6 +39,7 @@ struct AppConfig: Codable, Equatable {
     var resolutionHeight: Int
     var fullscreen: Bool
     var useD3d12: Bool
+    var frameCap: Int
     var launchArgs: String
     var hideLauncherWhilePlaying: Bool
     var launchFix: Bool
@@ -57,6 +58,7 @@ struct AppConfig: Codable, Equatable {
         case resolutionWidth = "resolution_width"
         case resolutionHeight = "resolution_height"
         case useD3d12 = "use_d3d12"
+        case frameCap = "frame_cap"
         case launchArgs = "launch_args"
         case hideLauncherWhilePlaying = "hide_launcher_while_playing"
         case launchFix = "launch_fix"

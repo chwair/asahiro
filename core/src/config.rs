@@ -82,6 +82,8 @@ pub struct Config {
     pub resolution_height: u32,
     pub fullscreen: bool,
     pub use_d3d12: bool,
+    // paced frame cap in frames per second, 0 leaves presenting to the game
+    pub frame_cap: u32,
     pub launch_args: String,
     pub hide_launcher_while_playing: bool,
     pub launch_fix: bool,
@@ -103,7 +105,8 @@ impl Default for Config {
             resolution_width: 1920,
             resolution_height: 1080,
             fullscreen: false,
-            use_d3d12: false,
+            use_d3d12: true,
+            frame_cap: 60,
             launch_args: String::new(),
             hide_launcher_while_playing: true,
             launch_fix: false,

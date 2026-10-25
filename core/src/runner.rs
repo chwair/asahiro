@@ -64,6 +64,27 @@ pub fn installed() -> bool {
     runner_dir().join("bin/wine").exists() && runner_dir().join(".asahiro-ok").exists()
 }
 
+static HOOKS: &[u8] = include_bytes!("../../app/Resources/bin/libasahiro-hooks.dylib");
+
+// the frame pacer and dock icon hooks, written next to the runners so wine can load them by path
+pub fn hooks_path() -> std::io::Result<PathBuf> {
+    let p = runners_dir().join("libasahiro-hooks.dylib");
+    if std::fs::read(&p).ok().as_deref() != Some(HOOKS) {
+        std::fs::write(&p, HOOKS)?;
+    }
+    Ok(p)
+}
+
+// the front end renders the launcher's shortcut art into a macos styled icon here
+pub fn game_icon_path() -> PathBuf {
+    data_dir().join("game-icon.icns")
+}
+
+// the icon in the game bundle, for the hooks to show in the dock
+pub fn game_app_icon() -> Option<PathBuf> {
+    Some(runner_dir().join(GAME_APP).join("Contents/Resources/AppIcon.icns")).filter(|p| p.exists())
+}
+
 pub fn d3dshared_path() -> PathBuf {
     runner_dir().join(LIBD3DSHARED)
 }
@@ -157,6 +178,7 @@ pub fn ensure(task: &Task) -> Result<PathBuf> {
 const GAME_APP: &str = "Zenless Zone Zero.app";
 const GAME_BUNDLE_ID: &str = "com.chair.asahiro.game";
 const LOADER: &str = "lib/wine/x86_64-unix/wine";
+const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 // macos only applies game mode to the main executable of a bundle with a games category, the plist
 // embedded in the loader is ignored. every wine process runs this loader, so it moves into a small app
@@ -165,6 +187,7 @@ pub fn ensure_game_app() -> Result<()> {
     let loader = runner_dir().join(LOADER);
     let app = runner_dir().join(GAME_APP);
     let exe = app.join("Contents/MacOS/wine");
+    let icon = std::fs::read(game_icon_path()).ok();
     let plist = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -174,7 +197,7 @@ pub fn ensure_game_app() -> Result<()> {
     <key>CFBundleIdentifier</key><string>{}</string>
     <key>CFBundleName</key><string>Zenless Zone Zero</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+    <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>{}
     <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
     <key>LSSupportsGameMode</key><true/>
     <key>LSUIElement</key><true/>
@@ -182,11 +205,14 @@ pub fn ensure_game_app() -> Result<()> {
 </dict>
 </plist>
 "#,
-        GAME_BUNDLE_ID
+        GAME_BUNDLE_ID,
+        if icon.is_some() { "\n    <key>CFBundleIconFile</key><string>AppIcon</string>" } else { "" }
     );
     let plist_path = app.join("Contents/Info.plist");
+    let icon_path = app.join("Contents/Resources/AppIcon.icns");
+    let icon_current = std::fs::read(&icon_path).ok() == icon;
     let linked = std::fs::read_link(&loader).ok().as_deref() == Some(exe.as_path());
-    if linked && exe.exists() && std::fs::read_to_string(&plist_path).ok().as_deref() == Some(plist.as_str()) {
+    if linked && exe.exists() && icon_current && std::fs::read_to_string(&plist_path).ok().as_deref() == Some(plist.as_str()) {
         return Ok(());
     }
     std::fs::create_dir_all(exe.parent().ok_or("bad bundle path")?)?;
@@ -197,6 +223,15 @@ pub fn ensure_game_app() -> Result<()> {
         std::fs::rename(&loader, &exe)?;
     }
     std::fs::write(&plist_path, plist)?;
+    match &icon {
+        Some(bytes) => {
+            std::fs::create_dir_all(app.join("Contents/Resources"))?;
+            std::fs::write(&icon_path, bytes)?;
+        }
+        None => {
+            let _ = std::fs::remove_file(&icon_path);
+        }
+    }
     // the loader looks for ntdll next to wherever it runs from
     let ntdll = exe.with_file_name("ntdll.so");
     let _ = std::fs::remove_file(&ntdll);
@@ -211,6 +246,9 @@ pub fn ensure_game_app() -> Result<()> {
     if !linked {
         std::os::unix::fs::symlink(&exe, &loader)?;
     }
+    // the dock and finder keep the old icon until the bundle looks modified and launch services rereads it
+    let _ = Command::new("/usr/bin/touch").arg(&app).status();
+    let _ = Command::new(LSREGISTER).arg("-f").arg(&app).status();
     Ok(())
 }
 
