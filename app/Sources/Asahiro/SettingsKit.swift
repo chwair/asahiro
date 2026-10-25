@@ -133,12 +133,35 @@ struct SettingsField: View {
     var body: some View {
         SettingsRow(title: title, subtitle: subtitle) {
             TextField("", text: $text, prompt: Text(prompt))
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
                 .font(monospaced ? .system(size: 12).monospaced() : .system(size: 12))
+                .settingsField()
                 .frame(width: width)
         }
     }
+}
+
+// the rounded border style is a bezeled appkit field that turns opaque when the page is rebuilt
+// over glass, so fields draw their own translucent box instead
+private struct SettingsFieldBox: ViewModifier {
+    @FocusState private var focused: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .textFieldStyle(.plain)
+            .focused($focused)
+            .padding(.horizontal, 6)
+            .frame(height: 22)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(focused ? Color.zzzYellow.opacity(0.8) : .white.opacity(0.1))
+            )
+            .animation(Motion.quick, value: focused)
+    }
+}
+
+extension View {
+    func settingsField() -> some View { modifier(SettingsFieldBox()) }
 }
 
 struct SettingsButton: View {

@@ -25,6 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // swiftpm executables start as background processes unless told otherwise
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        Updater.shared.checkOnLaunch()
+    }
+
+    // a staged update replaces the bundle once this process is gone
+    func applicationWillTerminate(_ notification: Notification) {
+        Updater.shared.installStaged(relaunch: false)
     }
 
     // asahiro://launch, sent by the game shortcut when asahiro is already running

@@ -118,9 +118,9 @@ struct SettingsView: View {
 
     private var shortcutSubtitle: String {
         switch shortcutStatus {
-        case .ours: "Starts the game directly. Asahiro only opens when there's an update."
-        case .foreign: "Applications already has a Zenless Zone Zero app (\(shortcutForeignKind)). Replace it to use Asahiro's."
-        case .missing: "Adds an app with the game's icon that starts it without opening the launcher."
+        case .ours: "Starts the game without opening the launcher."
+        case .foreign: "Applications already has one (\(shortcutForeignKind))."
+        case .missing: "Adds an app to Applications that starts the game without opening the launcher."
         }
     }
 
@@ -187,14 +187,13 @@ struct SettingsView: View {
                          onReveal: { model.reveal(c.wrappedValue.gameDir) })
             SettingsValue(title: "Installed version", value: model.state?.version ?? "Not installed")
             SettingsValue(title: "Latest version", value: model.state?.latest ?? "—")
-            SettingsButton(title: "Verify game files", subtitle: "Checks every file against the official manifest and repairs broken ones.",
-                           label: "Verify") {
+            SettingsButton(title: "Verify game files", subtitle: "Repairs missing or broken files.", label: "Verify") {
                 done()
                 model.start(.verify)
             }
             .disabled(model.activity != nil || model.state?.installed != true)
         }
-        SettingsGroup(header: "Voice packs", footer: "Downloaded with new installs. Installed packs are updated along with the game.") {
+        SettingsGroup(header: "Voice packs", footer: "Installed packs update with the game.") {
             ForEach(VoicePack.allCases) { pack in
                 SettingsToggle(title: pack.label, subtitle: model.state?.voicePacks.contains(pack.rawValue) == true ? "Installed" : nil,
                                isOn: Binding(
@@ -212,17 +211,16 @@ struct SettingsView: View {
             if c.wrappedValue.customResolution {
                 SettingsRow(title: "Size") {
                     HStack(spacing: Space.xs) {
-                        TextField("", value: c.resolutionWidth, format: .number.grouping(.never)).frame(width: 60)
+                        TextField("", value: c.resolutionWidth, format: .number.grouping(.never)).settingsField().frame(width: 60)
                         Text("×").foregroundStyle(.secondary)
-                        TextField("", value: c.resolutionHeight, format: .number.grouping(.never)).frame(width: 60)
+                        TextField("", value: c.resolutionHeight, format: .number.grouping(.never)).settingsField().frame(width: 60)
                     }
-                    .textFieldStyle(.roundedBorder)
-                    .controlSize(.small)
+                    .font(.system(size: 12))
                 }
                 SettingsToggle(title: "Fullscreen", isOn: c.fullscreen)
             }
         }
-        SettingsGroup(header: "Launcher", footer: "The game app lives in your Applications folder, so it shows up in Launchpad and Spotlight and can stay in the Dock.") {
+        SettingsGroup(header: "Launcher") {
             SettingsToggle(title: "Hide launcher while playing", isOn: c.hideLauncherWhilePlaying)
             SettingsRow(title: "Zenless Zone Zero app", subtitle: shortcutSubtitle) {
                 HStack(spacing: Space.xs) {
@@ -256,31 +254,31 @@ struct SettingsView: View {
         let crossover = model.wine?.crossoverFound == true
         SettingsGroup(header: "Wine runner") {
             SettingsChoice(title: "CrossOver 11.0-1",
-                           subtitle: "Open-source CrossOver wine build with DXMT, and D3DMetal when CrossOver is installed. Gets the game past the anti-cheat.",
+                           subtitle: "Includes DXMT, and uses D3DMetal when CrossOver is installed.",
                            badge: "Recommended", value: "bundled", selection: c.runner)
             SettingsChoice(title: "CrossOver app" + (model.wine?.crossoverVersion.map { " \($0)" } ?? ""),
-                           subtitle: crossover ? "The wine inside your CrossOver install. The game currently crashes on it."
+                           subtitle: crossover ? "The game currently crashes on this runner."
                                                : "CrossOver is not installed.",
                            value: "crossover", selection: c.runner, disabled: !crossover)
         }
         SettingsGroup(header: "Bottle", footer: "Changes apply the next time the game starts.") {
-            SettingsField(title: "Name", subtitle: "Pointing at a different name uses or creates that bottle.",
+            SettingsField(title: "Name", subtitle: "A new name creates a new bottle.",
                           text: c.bottle.name, width: 180)
             SettingsMenu(title: "Windows version", selection: c.bottle.windowsVersion,
                          options: [("win10", "Windows 10"), ("win11", "Windows 11")])
-            SettingsToggle(title: "MSync", subtitle: "Faster thread synchronisation. Recommended.", isOn: c.bottle.msync)
+            SettingsToggle(title: "MSync", subtitle: "Faster thread synchronisation.", isOn: c.bottle.msync)
             SettingsToggle(title: "Retina mode", subtitle: "Renders at native resolution. Sharper but slower.", isOn: c.bottle.retina)
             SettingsToggle(title: "Left ⌘ acts as Control", isOn: c.bottle.leftCmdIsCtrl)
-            SettingsToggle(title: "Left ⌥ acts as Alt", subtitle: "Needed for Alt hotkeys in the game and in mods.",
+            SettingsToggle(title: "Left ⌥ acts as Alt", subtitle: "Needed for Alt hotkeys in game and mods.",
                            isOn: c.bottle.leftOptionIsAlt)
             SettingsToggle(title: "Right ⌥ acts as Alt", isOn: c.bottle.rightOptionIsAlt)
         }
         SettingsGroup(header: "Workarounds") {
             SettingsToggle(title: "Steam compatibility shim",
-                           subtitle: "Starts the game through Proton's steam.exe so the anti-cheat skips its kernel driver. Required.",
+                           subtitle: "Required for the anti-cheat.",
                            isOn: c.steamPatch)
             SettingsToggle(title: "Launch fix",
-                           subtitle: "Blocks one HoYoverse host for 25 seconds while starting. Asks for your password.",
+                           subtitle: "Blocks a game server for 25 seconds at startup. Asks for your password.",
                            isOn: c.launchFix)
         }
         SettingsGroup(header: "Maintenance") {
@@ -297,7 +295,7 @@ struct SettingsView: View {
                 SettingsPath(title: "Bottle folder", path: path, onReveal: { model.reveal(path) })
                     .disabled(model.wine?.bottleExists != true)
             }
-            SettingsButton(title: "Repair bottle", subtitle: "Creates the bottle if missing and re-applies every setting.", label: "Repair") {
+            SettingsButton(title: "Repair bottle", subtitle: "Recreates the bottle if missing and reapplies settings.", label: "Repair") {
                 if let draft, draft != model.config { model.saveConfig(draft) }
                 close()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { model.start(.createBottle) }
@@ -327,13 +325,13 @@ struct SettingsView: View {
             SettingsToggle(title: "Metal performance HUD", isOn: c.bottle.metalHud)
             SettingsToggle(title: "MetalFX upscaling", subtitle: "D3DMetal only.", isOn: c.bottle.metalfx)
                 .disabled(!d3dmetal)
-            SettingsToggle(title: "DirectX 12", subtitle: "D3DMetal only. Precompiles shaders, so far less stutter.", isOn: c.useD3d12)
+            SettingsToggle(title: "DirectX 12", subtitle: "D3DMetal only. Much less shader stutter.", isOn: c.useD3d12)
                 .disabled(!d3dmetal)
             SettingsToggle(title: "DLSS and NVAPI extensions", isOn: c.bottle.dlss)
         }
         let paced = c.wrappedValue.bottle.graphicsBackend == GraphicsBackend.dxmt.rawValue || (d3dmetal && bundled)
         SettingsGroup(header: "Frame pacing",
-                      footer: "Holds every frame on screen for the same time, which smooths out an uneven frame time graph. Keep V-Sync on in the game and set its frame rate to match or higher.") {
+                      footer: "Smooths uneven frame times. Keep V-Sync on in game with its frame rate at or above the cap.") {
             SettingsMenu(title: "Frame cap", subtitle: paced ? nil : "DXMT, or D3DMetal on the bundled runner.",
                          selection: c.frameCap,
                          options: [(0, "Off"), (30, "30 fps"), (40, "40 fps"), (45, "45 fps"), (60, "60 fps"), (90, "90 fps"), (120, "120 fps")])
@@ -344,7 +342,7 @@ struct SettingsView: View {
     @ViewBuilder
     private func modsPage(_ c: Binding<AppConfig>) -> some View {
         let z = model.zzmi
-        SettingsGroup(footer: "Mods are against HoYoverse's terms of service. Use them at your own risk.") {
+        SettingsGroup(footer: "Mods are against the game's terms of service. Use them at your own risk.") {
             SettingsToggle(title: "Enable mods", subtitle: "Loads ZZMI into the game at launch.", isOn: c.modsEnabled)
         }
         SettingsGroup(header: "ZZMI") {
@@ -354,7 +352,7 @@ struct SettingsView: View {
                 model.start(.zzmiInstall)
             }
             .disabled(model.activity != nil || model.gameRunning)
-            SettingsToggle(title: "Update automatically", subtitle: "Checks GitHub every few hours and updates before launching.",
+            SettingsToggle(title: "Update automatically", subtitle: "Updates before launching when a new version is out.",
                            isOn: c.modsAutoUpdate)
         }
         SettingsGroup(header: "Mods", footer: "Mods only show with Character Quality set to High and High-Precision Character Animation turned off in the game's graphics settings.") {
@@ -377,11 +375,10 @@ struct SettingsView: View {
         return z.updateAvailable ? "Update available" : "Up to date"
     }
 
-    private func zzmiActionSubtitle(_ z: ZzmiStatus?) -> String {
-        guard let z else { return "Downloads from the official GitHub releases and checks their signatures." }
-        if !z.installed { return "Downloads from the official GitHub releases and checks their signatures." }
+    private func zzmiActionSubtitle(_ z: ZzmiStatus?) -> String? {
+        guard let z, z.installed else { return "Downloads from GitHub and verifies signatures." }
         if z.updateAvailable { return "ZZMI \(z.latestZzmi ?? "?") and XXMI \(z.latestLibs ?? "?") are available." }
-        return "Signatures are verified on every install."
+        return nil
     }
 
     @ViewBuilder
@@ -390,7 +387,7 @@ struct SettingsView: View {
             SettingsField(title: "Game arguments", text: c.launchArgs, prompt: "-popupwindow", monospaced: true)
             SettingsField(title: "DLL overrides", text: c.bottle.dllOverrides, prompt: "dxgi=n,b", monospaced: true)
         }
-        SettingsGroup(header: "Environment variables", footer: "Exported for every launch and written to the bottle's cxbottle.conf.") {
+        SettingsGroup(header: "Environment variables", footer: "Applied to every launch.") {
             EnvEditor(env: c.bottle.env)
         }
         SettingsGroup(header: "CrossOver") {
@@ -400,6 +397,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func aboutPage() -> some View {
+        UpdateSettings()
         SettingsGroup(header: "Environment") {
             statusRow("Runner", ok: model.wine?.runnerInstalled == true,
                       value: (model.wine?.runnerName ?? "—") + (model.wine?.runnerInstalled == true ? "" : ", downloads on first launch"))
@@ -408,10 +406,10 @@ struct SettingsView: View {
             statusRow("Bottle", ok: model.wine?.bottleExists == true,
                       value: model.wine?.bottleExists == true ? "Ready" : "Created on first launch")
         }
-        SettingsGroup(header: "Asahiro", footer: "Update logic follows YAAGL. Not affiliated with HoYoverse or CodeWeavers.") {
-            SettingsValue(title: "Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev")
+        SettingsGroup(header: "Troubleshooting") {
             SettingsPath(title: "Logs", path: model.logsFolder, onReveal: { model.reveal(model.logsFolder) })
         }
+        AboutHero()
     }
 
     private func statusRow(_ title: String, ok: Bool, value: String) -> some View {
@@ -434,8 +432,8 @@ private struct EnvEditor: View {
             SettingsRow(title: key) {
                 HStack(spacing: Space.xs) {
                     TextField("", text: Binding(get: { env[key] ?? "" }, set: { env[key] = $0 }))
-                        .textFieldStyle(.roundedBorder)
                         .font(.system(size: 12).monospaced())
+                        .settingsField()
                         .frame(width: 200)
                     Button {
                         env.removeValue(forKey: key)
@@ -449,8 +447,8 @@ private struct EnvEditor: View {
         }
         SettingsRow(title: "Add variable") {
             HStack(spacing: Space.xs) {
-                TextField("", text: $newKey, prompt: Text("NAME")).frame(width: 120)
-                TextField("", text: $newValue, prompt: Text("value")).frame(width: 120)
+                TextField("", text: $newKey, prompt: Text("NAME")).settingsField().frame(width: 120)
+                TextField("", text: $newValue, prompt: Text("value")).settingsField().frame(width: 120)
                 Button("Add") {
                     let k = newKey.trimmingCharacters(in: .whitespaces)
                     guard !k.isEmpty else { return }
@@ -459,8 +457,9 @@ private struct EnvEditor: View {
                     newValue = ""
                 }
                 .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty)
+                .font(.system(size: 12))
+                .fixedSize()
             }
-            .textFieldStyle(.roundedBorder)
             .font(.system(size: 12).monospaced())
             .controlSize(.small)
         }
@@ -478,7 +477,7 @@ struct InstallSheet: View {
                 Text(model.state?.partialDownload == true ? "Resume installation" : "Install Zenless Zone Zero")
                     .font(.system(size: 20, weight: .semibold))
                 if let s = model.state {
-                    Text("Version \(s.latest). Downloads resume where they left off if interrupted.")
+                    Text("Version \(s.latest)")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -503,7 +502,7 @@ struct InstallSheet: View {
                 }
             }
             if let s = model.state {
-                SettingsGroup(header: "Space", footer: "Sizes refresh after the folder or voice packs change.") {
+                SettingsGroup(header: "Space") {
                     SettingsValue(title: "Download", value: formatBytes(s.downloadSize))
                     SettingsValue(title: "Needed on disk", value: formatBytes(s.installSize))
                     SettingsValue(title: "Free", value: formatBytes(s.freeSpace))

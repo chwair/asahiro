@@ -183,9 +183,9 @@ enum GraphicsBackend: String, CaseIterable, Identifiable {
     var blurb: String {
         switch self {
         case .dxmt: "Metal-native D3D11. Works without CrossOver and is used for launches with mods."
-        case .d3dmetal: "Apple's Game Porting Toolkit layer, taken from your CrossOver install. Best performance for ZZZ. Launches with mods use DXMT."
-        case .dxvk: "D3D to Vulkan through MoltenVK. Compatibility fallback."
-        case .wined3d: "OpenGL based. Slow, for troubleshooting only."
+        case .d3dmetal: "Uses your CrossOver install. Best performance. Launches with mods use DXMT."
+        case .dxvk: "Vulkan through MoltenVK. Fallback if the others misbehave."
+        case .wined3d: "OpenGL. Slow, for troubleshooting only."
         }
     }
 

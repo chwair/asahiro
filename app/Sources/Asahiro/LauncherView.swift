@@ -169,7 +169,7 @@ private struct LeftCorner: View {
                 }
                 .buttonStyle(PressStyle())
                 .onHover { hovering = $0 }
-                .help("Open the version notes on HoYoLAB")
+                .help("Open the version notes")
             }
             VersionPill()
         }
