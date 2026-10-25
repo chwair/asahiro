@@ -14,6 +14,7 @@ struct TaskEvent: Decodable {
     let ok: Bool?
     let error: String?
     let cancelled: Bool?
+    let phase: String?
 }
 
 // thin bridge over the rust static library, everything crosses as json
@@ -77,5 +78,9 @@ enum Core {
 
     static func cancel(_ id: UInt64) {
         asahiro_cancel(id)
+    }
+
+    static func pause(_ id: UInt64, _ paused: Bool) {
+        asahiro_pause(id, paused)
     }
 }

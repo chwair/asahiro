@@ -349,7 +349,7 @@ private struct StatusPanel: View {
                 return ("IN GAME", modsMeta, "Zenless Zone Zero")
             }
             // the percentage already sits on the big button
-            return (a.kind.title.uppercased(), nil, progressLine(a))
+            return (a.title.uppercased(), nil, progressLine(a))
         }
         if model.gameRunning { return ("IN GAME", modsMeta, "Zenless Zone Zero") }
         guard let s = model.state else {
@@ -451,6 +451,8 @@ private struct PrimaryButton: View {
                     .font(.display(21))
                     .kerning(0.6)
                     .monospacedDigit()
+                    .contentTransition(.numericText(value: Double(percent ?? 0)))
+                    .animation(Motion.snap, value: percent)
             }
             .foregroundStyle(Color.zzzInk)
             .frame(width: 220, height: 60)
@@ -475,6 +477,19 @@ private struct PrimaryButton: View {
         .onHover { h in withAnimation(Motion.quick) { hovering = h } }
         .keyboardShortcut(.defaultAction)
         .animation(Motion.quick, value: model.primary)
+        .animation(Motion.quick, value: model.activity?.paused)
+        .help(pauseHelp)
+    }
+
+    private var percent: Int? {
+        guard let a = model.activity, a.kind != .launch, let f = a.fraction else { return nil }
+        return Int((f * 100).rounded())
+    }
+
+    private var pauseHelp: String {
+        guard let a = model.activity else { return "" }
+        if a.paused { return "Resume" }
+        return a.pausable ? "Pause" : ""
     }
 
     private var content: (title: String, symbol: String?, enabled: Bool) {
@@ -487,8 +502,12 @@ private struct PrimaryButton: View {
         case .launch: ("START", "play.fill", true)
         case .playing: ("PLAYING", "gamecontroller.fill", false)
         case .busy:
-            if let f = model.activity?.fraction, model.activity?.kind != .launch {
-                ("\(Int((f * 100).rounded()))%", "hourglass", false)
+            if let a = model.activity, let percent {
+                if a.paused {
+                    ("\(percent)%", "play.fill", true)
+                } else {
+                    ("\(percent)%", a.pausable ? "pause.fill" : "hourglass", a.pausable)
+                }
             } else {
                 (model.activity?.kind == .launch ? "STARTING" : "WORKING", nil, false)
             }

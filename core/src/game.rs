@@ -203,6 +203,7 @@ pub fn install(task: &Task, cfg: &Config, m: &Manifest) -> Result<()> {
     // game volumes form one archive, audio packs are standalone zips
     let game_count = latest.game_pkgs.len();
     let (game_parts, audio_parts) = files.split_at(game_count);
+    task.phase("install");
     task.status("Extracting game files");
     archive::extract(task, game_parts, &dir, "Extracting")?;
     for p in game_parts {
@@ -250,6 +251,7 @@ pub fn update(task: &Task, cfg: &Config, m: &Manifest, use_predownload: bool) ->
     task.status(format!("Updating {} → {}", current, target));
     let files = download_all(task, &dir, &pkgs, "Downloading update")?;
     for f in &files {
+        task.phase("install");
         task.status(format!("Applying {}", file_name(&f.to_string_lossy())));
         archive::extract(task, std::slice::from_ref(f), &dir, "Extracting update")?;
         apply_patch_lists(task, &dir, &hpatchz)?;
@@ -321,6 +323,7 @@ fn apply_patch_lists(task: &Task, dir: &Path, hpatchz: &Path) -> Result<()> {
         let _ = std::fs::remove_file(dir.join(f));
         done += 1;
     }
+    task.phase("patch");
     task.status("Patching files");
     for d in &diffs {
         task.check()?;
@@ -363,6 +366,7 @@ pub fn ensure_hpatchz(task: &Task) -> Result<PathBuf> {
     if bin.exists() {
         return Ok(bin);
     }
+    task.phase("download");
     task.status("Downloading patch tool");
     let zip_path = data_dir().join("tools/hdiffpatch.zip");
     fetch_simple(task, HPATCHZ_URL, &zip_path)?;
@@ -412,6 +416,7 @@ pub fn verify(task: &Task, cfg: &Config, m: &Manifest) -> Result<()> {
     let checked = AtomicU64::new(0);
     let broken = Mutex::new(Vec::new());
     let queue = Mutex::new(entries.iter().collect::<Vec<_>>());
+    task.phase("verify");
     task.status(format!("Verifying {} files", entries.len()));
 
     std::thread::scope(|s| {
@@ -430,7 +435,7 @@ pub fn verify(task: &Task, cfg: &Config, m: &Manifest) -> Result<()> {
                     let ok = std::fs::metadata(&path).map(|m| m.len() == e.file_size).unwrap_or(false)
                         && md5_file(&path, |n| {
                             checked.fetch_add(n, Ordering::Relaxed);
-                            Ok(())
+                            task.check()
                         })
                         .map(|h| h.eq_ignore_ascii_case(&e.md5))
                         .unwrap_or(false);
@@ -457,6 +462,7 @@ pub fn verify(task: &Task, cfg: &Config, m: &Manifest) -> Result<()> {
         return Ok(());
     }
     task.log(format!("{} files need repair", broken.len()));
+    task.phase("repair");
     // an early applied pre-download is newer than the live release, repair from its own file list
     let installed = installed_version(&dir).unwrap_or_default();
     let source = m.pre_download.major.as_ref().filter(|p| p.version == installed).unwrap_or(latest);

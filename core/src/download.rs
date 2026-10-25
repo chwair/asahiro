@@ -30,6 +30,11 @@ impl<'a> Meter<'a> {
         }
         self.task.progress(Some(frac), detail);
     }
+
+    // a pause leaves a gap that would drag the speed average down for a while
+    pub fn reset_speed(&mut self) {
+        self.speed = Speed::new();
+    }
 }
 
 fn ok_marker(dest: &Path) -> PathBuf {
@@ -75,10 +80,16 @@ pub fn fetch(meter: &mut Meter, url: &str, dest: &Path, size: u64, md5: &str) ->
             break;
         }
         meter.done = start_done + have;
+        meter.task.phase("download");
         meter.task.status(format!("Downloading {}", name));
         match stream(meter, url, dest, have) {
             Ok(()) => break,
             Err(e) if e.0 == "cancelled" => return Err(e),
+            // the connection was dropped on purpose, the next round picks up from the partial file
+            Err(e) if e.0 == "paused" => {
+                meter.task.wait_resumed()?;
+                meter.reset_speed();
+            }
             Err(e) => {
                 attempts += 1;
                 meter.task.log(format!("download error ({}), retry {}: {}", name, attempts, e));
@@ -92,6 +103,7 @@ pub fn fetch(meter: &mut Meter, url: &str, dest: &Path, size: u64, md5: &str) ->
     meter.done = start_done + size;
 
     if !md5.is_empty() {
+        meter.task.phase("verify");
         meter.task.status(format!("Verifying {}", name));
         let task = meter.task;
         let mut seen = 0u64;
@@ -125,7 +137,11 @@ fn stream(meter: &mut Meter, url: &str, dest: &Path, have: u64) -> Result<()> {
     let mut reader = resp.into_reader();
     let mut buf = vec![0u8; 1 << 20];
     loop {
-        meter.task.check()?;
+        meter.task.check_cancel()?;
+        if meter.task.paused() {
+            file.flush()?;
+            return err("paused");
+        }
         let n = reader.read(&mut buf)?;
         if n == 0 {
             break;

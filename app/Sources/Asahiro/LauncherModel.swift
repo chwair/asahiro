@@ -33,12 +33,39 @@ enum TaskKind: String {
     }
 }
 
+enum TaskPhase: String {
+    case download, verify, install, patch, repair
+
+    var title: String {
+        switch self {
+        case .download: "Downloading"
+        case .verify: "Verifying"
+        case .install: "Installing"
+        case .patch: "Patching"
+        case .repair: "Repairing"
+        }
+    }
+}
+
 struct Activity {
     var kind: TaskKind
     var id: UInt64
     var status: String
     var detail: String = ""
     var fraction: Double?
+    var phase: TaskPhase?
+    var paused = false
+
+    // the label above the progress, the core phase is more specific than the task kind
+    var title: String {
+        paused ? "Paused" : (phase?.title ?? kind.title)
+    }
+
+    // pausing only makes sense while bytes are moving or being hashed
+    var pausable: Bool {
+        guard kind != .launch, let phase else { return false }
+        return phase == .download || phase == .verify
+    }
 }
 
 enum PrimaryAction: Equatable {
@@ -252,8 +279,17 @@ final class LauncherModel: ObservableObject {
         case .install, .resume: confirmInstall = true
         case .update: start(.update)
         case .launch: start(.launch)
+        case .busy: togglePause()
         default: break
         }
+    }
+
+    // the core keeps the partial file and the open task, resuming continues where it stopped
+    func togglePause() {
+        guard let activity, activity.pausable || activity.paused else { return }
+        let paused = !activity.paused
+        Core.pause(activity.id, paused)
+        self.activity?.paused = paused
     }
 
     func saveConfig(_ new: AppConfig) {
@@ -290,6 +326,7 @@ final class LauncherModel: ObservableObject {
             Task { try? await Core.run(["cmd": "stop_game"]) }
         }
         Core.cancel(activity.id)
+        self.activity?.paused = false
         self.activity?.status = "Stopping…"
     }
 
@@ -297,6 +334,8 @@ final class LauncherModel: ObservableObject {
         switch event.type {
         case "status":
             activity?.status = event.text ?? ""
+        case "phase":
+            activity?.phase = event.phase.flatMap(TaskPhase.init(rawValue:))
         case "progress":
             activity?.fraction = event.fraction
             activity?.detail = event.detail ?? ""

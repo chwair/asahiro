@@ -133,12 +133,18 @@ pub type Emitter = Arc<dyn Fn(Value) + Send + Sync>;
 pub struct Task {
     emit: Emitter,
     cancel: Arc<AtomicBool>,
+    pause: Arc<AtomicBool>,
     last_progress: Arc<Mutex<Option<Instant>>>,
 }
 
 impl Task {
-    pub fn new(emit: Emitter, cancel: Arc<AtomicBool>) -> Self {
-        Task { emit, cancel, last_progress: Arc::new(Mutex::new(None)) }
+    pub fn new(emit: Emitter, cancel: Arc<AtomicBool>, pause: Arc<AtomicBool>) -> Self {
+        Task { emit, cancel, pause, last_progress: Arc::new(Mutex::new(None)) }
+    }
+
+    // what the job is doing right now (download, verify, install, patch, repair) so the ui can name it
+    pub fn phase(&self, name: &str) {
+        (self.emit)(json!({ "type": "phase", "phase": name }));
     }
 
     pub fn status(&self, text: impl Into<String>) {
@@ -174,7 +180,31 @@ impl Task {
         self.cancel.load(Ordering::Relaxed)
     }
 
+    pub fn paused(&self) -> bool {
+        self.pause.load(Ordering::Relaxed)
+    }
+
+    // blocks while paused, so every check point doubles as a pause point
+    pub fn wait_resumed(&self) -> Result<()> {
+        while self.paused() && !self.cancelled() {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        if self.cancelled() {
+            err("cancelled")
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn check(&self) -> Result<()> {
+        if self.paused() {
+            return self.wait_resumed();
+        }
+        self.check_cancel()
+    }
+
+    // like check but never blocks, for loops that handle pausing themselves
+    pub fn check_cancel(&self) -> Result<()> {
         if self.cancelled() {
             err("cancelled")
         } else {

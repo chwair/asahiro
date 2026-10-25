@@ -19,7 +19,8 @@ use crate::config::Config;
 use crate::util::{err, Emitter, Result, Task};
 
 static NEXT_TASK: AtomicU64 = AtomicU64::new(1);
-static TASKS: Mutex<Option<HashMap<u64, Arc<AtomicBool>>>> = Mutex::new(None);
+// cancel and pause flags per running task
+static TASKS: Mutex<Option<HashMap<u64, (Arc<AtomicBool>, Arc<AtomicBool>)>>> = Mutex::new(None);
 
 // quick request/response commands
 pub fn call(req: &Value) -> Result<Value> {
@@ -96,9 +97,10 @@ pub fn run_task(task: &Task, req: &Value) -> Result<()> {
 pub fn spawn(req: Value, emit: Emitter) -> u64 {
     let id = NEXT_TASK.fetch_add(1, Ordering::Relaxed);
     let cancel = Arc::new(AtomicBool::new(false));
-    TASKS.lock().unwrap().get_or_insert_with(HashMap::new).insert(id, cancel.clone());
+    let pause = Arc::new(AtomicBool::new(false));
+    TASKS.lock().unwrap().get_or_insert_with(HashMap::new).insert(id, (cancel.clone(), pause.clone()));
     std::thread::spawn(move || {
-        let task = Task::new(emit.clone(), cancel);
+        let task = Task::new(emit.clone(), cancel, pause);
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run_task(&task, &req)));
         let done = match res {
             Ok(Ok(())) => json!({ "type": "finished", "ok": true }),
@@ -114,8 +116,14 @@ pub fn spawn(req: Value, emit: Emitter) -> u64 {
 }
 
 pub fn cancel(id: u64) {
-    if let Some(flag) = TASKS.lock().unwrap().as_ref().and_then(|m| m.get(&id)) {
+    if let Some((flag, _)) = TASKS.lock().unwrap().as_ref().and_then(|m| m.get(&id)) {
         flag.store(true, Ordering::Relaxed);
+    }
+}
+
+pub fn pause(id: u64, paused: bool) {
+    if let Some((_, flag)) = TASKS.lock().unwrap().as_ref().and_then(|m| m.get(&id)) {
+        flag.store(paused, Ordering::Relaxed);
     }
 }
 
@@ -167,6 +175,11 @@ pub unsafe extern "C" fn asahiro_spawn(request: *const c_char, callback: EventCa
 #[no_mangle]
 pub extern "C" fn asahiro_cancel(task: u64) {
     cancel(task)
+}
+
+#[no_mangle]
+pub extern "C" fn asahiro_pause(task: u64, paused: bool) {
+    pause(task, paused)
 }
 
 /// # Safety
