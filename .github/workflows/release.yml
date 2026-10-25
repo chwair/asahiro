@@ -1,0 +1,60 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Next version
+        id: version
+        run: |
+          last=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -z "$last" ]; then
+            next=0.1.0
+            range=HEAD
+          else
+            v=${last#v}
+            major=${v%%.*}
+            rest=${v#*.}
+            minor=${rest%%.*}
+            patch=${rest#*.}
+            next="$major.$minor.$((patch + 1))"
+            range="$last..HEAD"
+          fi
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+          git log "$range" --no-merges --pretty='- %s (%h)' > notes.md
+          cat notes.md
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Build dmg
+        run: ./scripts/build-dmg.sh
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ github.run_number }}
+
+      - name: Tag and draft release
+        run: |
+          git tag "v$VERSION" "$GITHUB_SHA"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" "dist/Asahiro-$VERSION.dmg" \
+            --draft --verify-tag --title "Asahiro $VERSION" --notes-file notes.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}

@@ -3,6 +3,9 @@
 set -e
 cd "$(dirname "$0")/.."
 export MACOSX_DEPLOYMENT_TARGET=26.0
+# ci passes the release version and run number, local builds keep the defaults
+VERSION="${VERSION:-0.1.0}"
+BUILD="${BUILD:-1}"
 
 # the injector runs inside wine, the core embeds the committed exe so mingw is only needed to change it
 if command -v x86_64-w64-mingw32-gcc >/dev/null; then
@@ -36,8 +39,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
-    <key>CFBundleVersion</key><string>1</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
+    <key>CFBundleVersion</key><string>$BUILD</string>
     <key>LSMinimumSystemVersion</key><string>26.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
     <key>NSHighResolutionCapable</key><true/>
