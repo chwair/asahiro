@@ -26,8 +26,9 @@ impl Package {
         self.size.parse().unwrap_or(0)
     }
 
-    pub fn decompressed_size(&self) -> u64 {
-        self.decompressed_size.parse().unwrap_or(0)
+    // decompressed_size from the api already counts the archive itself, so this is what extraction adds
+    pub fn unpacked_size(&self) -> u64 {
+        self.decompressed_size.parse::<u64>().unwrap_or(0).saturating_sub(self.size())
     }
 }
 

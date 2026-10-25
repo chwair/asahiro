@@ -150,7 +150,7 @@ pub fn state(cfg: &Config, m: &Manifest) -> Result<GameState> {
         predownload_ready,
         voice_packs: installed_voice_packs(&dir),
         download_size: pkgs.iter().map(|p| p.size()).sum(),
-        install_size: pkgs.iter().map(|p| p.decompressed_size()).sum(),
+        install_size: pkgs.iter().map(|p| p.unpacked_size()).sum(),
         free_space: free_space(&dir).unwrap_or(0),
         partial_download: std::fs::read_dir(&tmp).map(|mut d| d.next().is_some()).unwrap_or(false),
     })
@@ -194,7 +194,7 @@ pub fn install(task: &Task, cfg: &Config, m: &Manifest) -> Result<()> {
         .filter(|p| !download::is_complete(&tmp.join(file_name(&p.url)), p.size(), &p.md5))
         .map(|p| p.size())
         .sum();
-    let unpacked: u64 = pkgs.iter().map(|p| p.decompressed_size()).sum();
+    let unpacked: u64 = pkgs.iter().map(|p| p.unpacked_size()).sum();
     check_space(&dir, pending + unpacked + (1 << 30))?;
 
     task.status(format!("Downloading Zenless Zone Zero {}", latest.version));
@@ -241,7 +241,7 @@ pub fn update(task: &Task, cfg: &Config, m: &Manifest, use_predownload: bool) ->
         .iter()
         .map(|p| {
             let downloaded = download::is_complete(&tmp.join(file_name(&p.url)), p.size(), &p.md5);
-            p.decompressed_size() + if downloaded { 0 } else { p.size() }
+            p.unpacked_size() + if downloaded { 0 } else { p.size() }
         })
         .sum();
     check_space(&dir, pending)?;
