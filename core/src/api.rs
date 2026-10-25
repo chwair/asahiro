@@ -129,9 +129,23 @@ pub fn manifest(force: bool) -> Result<Manifest> {
     let Some(entry) = entry else {
         return err("zenless zone zero is missing from the package list");
     };
-    let m: Manifest = serde_json::from_value(entry)?;
+    let mut m: Manifest = serde_json::from_value(entry)?;
+    // the zip package list lags behind since hoyoplay moved to sophon downloads, so a released version can
+    // still sit in pre_download. the branch list is current, so its tag decides which one is live
+    if let Some(live) = live_version() {
+        let stale = m.main.major.as_ref().is_some_and(|p| p.version != live);
+        if stale && m.predownload_version() == Some(live.as_str()) {
+            m.main = std::mem::take(&mut m.pre_download);
+        }
+    }
     *cached = Some((Instant::now(), m.clone()));
     Ok(m)
+}
+
+fn live_version() -> Option<String> {
+    let v = get_json(&format!("{API}/getGameBranches?launcher_id={LAUNCHER_ID}")).ok()?;
+    let branch = v["data"]["game_branches"].as_array()?.iter().find(|x| x["game"]["biz"] == BIZ)?;
+    branch["main"]["tag"].as_str().filter(|t| !t.is_empty()).map(String::from)
 }
 
 fn art_cache_file() -> PathBuf {
