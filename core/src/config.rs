@@ -41,6 +41,7 @@ pub struct BottleConfig {
     pub metal_hud: bool,
     pub metalfx: bool,
     pub dlss: bool,
+    pub raytracing: bool,
     pub retina: bool,
     pub left_cmd_is_ctrl: bool,
     pub left_option_is_alt: bool,
@@ -59,6 +60,7 @@ impl Default for BottleConfig {
             metal_hud: false,
             metalfx: false,
             dlss: false,
+            raytracing: false,
             retina: false,
             left_cmd_is_ctrl: true,
             left_option_is_alt: true,
@@ -81,6 +83,8 @@ pub struct Config {
     pub resolution_width: u32,
     pub resolution_height: u32,
     pub fullscreen: bool,
+    // moves the game into a macos fullscreen space so metal can present direct to display
+    pub native_fullscreen: bool,
     pub use_d3d12: bool,
     // paced frame cap in frames per second, 0 leaves presenting to the game
     pub frame_cap: u32,
@@ -105,6 +109,7 @@ impl Default for Config {
             resolution_width: 1920,
             resolution_height: 1080,
             fullscreen: false,
+            native_fullscreen: false,
             use_d3d12: true,
             frame_cap: 60,
             launch_args: String::new(),

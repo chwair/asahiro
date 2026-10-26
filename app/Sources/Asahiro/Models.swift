@@ -8,6 +8,7 @@ struct BottleConfig: Codable, Equatable {
     var metalHud: Bool
     var metalfx: Bool
     var dlss: Bool
+    var raytracing: Bool
     var retina: Bool
     var leftCmdIsCtrl: Bool
     var leftOptionIsAlt: Bool
@@ -16,7 +17,7 @@ struct BottleConfig: Codable, Equatable {
     var dllOverrides: String
 
     enum CodingKeys: String, CodingKey {
-        case name, msync, metalfx, dlss, retina, env
+        case name, msync, metalfx, dlss, raytracing, retina, env
         case windowsVersion = "windows_version"
         case graphicsBackend = "graphics_backend"
         case metalHud = "metal_hud"
@@ -38,6 +39,7 @@ struct AppConfig: Codable, Equatable {
     var resolutionWidth: Int
     var resolutionHeight: Int
     var fullscreen: Bool
+    var nativeFullscreen: Bool
     var useD3d12: Bool
     var frameCap: Int
     var launchArgs: String
@@ -57,6 +59,7 @@ struct AppConfig: Codable, Equatable {
         case customResolution = "custom_resolution"
         case resolutionWidth = "resolution_width"
         case resolutionHeight = "resolution_height"
+        case nativeFullscreen = "native_fullscreen"
         case useD3d12 = "use_d3d12"
         case frameCap = "frame_cap"
         case launchArgs = "launch_args"

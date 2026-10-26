@@ -16,12 +16,15 @@ const LAUNCH_FIX_SECONDS: u32 = 25;
 
 const ENV_BEGIN: &str = ";; asahiro managed begin";
 const ENV_END: &str = ";; asahiro managed end";
-const MANAGED_KEYS: [&str; 7] = [
+const MANAGED_KEYS: [&str; 10] = [
     "CX_GRAPHICS_BACKEND",
     "WINEMSYNC",
     "WINEESYNC",
     "MTL_HUD_ENABLED",
     "D3DM_ENABLE_METALFX",
+    "D3DM_SUPPORT_DXR",
+    "D3DM_DEVICE_ID",
+    "D3DM_DEVICE_DESCRIPTION",
     "DXMT_ENABLE_NVEXT",
     "WINEDLLOVERRIDES",
 ];
@@ -252,8 +255,19 @@ fn bottle_env(b: &BottleConfig) -> Vec<(String, String)> {
     if b.metal_hud {
         env.push(("MTL_HUD_ENABLED".into(), "1".into()));
     }
-    if b.metalfx && b.graphics_backend == GraphicsBackend::D3dmetal {
+    let d3dmetal = b.graphics_backend == GraphicsBackend::D3dmetal;
+    // d3dmetal runs dlss through metalfx, so dlss needs it on too
+    if (b.metalfx || b.dlss) && d3dmetal {
         env.push(("D3DM_ENABLE_METALFX".into(), "1".into()));
+    }
+    if b.raytracing && d3dmetal {
+        env.push(("D3DM_SUPPORT_DXR".into(), "1".into()));
+    }
+    // d3dmetal names the gpu "AMD Compatibility Mode", which zzz does not recognize, so it hides its
+    // super resolution and ray tracing settings. an rtx name gets them shown
+    if (b.dlss || b.raytracing) && d3dmetal {
+        env.push(("D3DM_DEVICE_ID".into(), "0x2684".into()));
+        env.push(("D3DM_DEVICE_DESCRIPTION".into(), "NVIDIA GeForce RTX 4090".into()));
     }
     if b.dlss {
         env.push(("DXMT_ENABLE_NVEXT".into(), "1".into()));
@@ -519,7 +533,7 @@ fn launch_args(cfg: &Config) -> Vec<String> {
 }
 
 // dxmt paces presents itself, d3dmetal gets the same from our hooks swapping in presentDrawable:afterMinimumDuration:.
-// the hooks also put the game bundle's icon in the dock. crossover's wine is a perl script, and macos strips DYLD_ variables
+// the hooks also put the game bundle's icon in the dock and can move the game into a macos fullscreen space. crossover's wine is a perl script, and macos strips DYLD_ variables
 // from system binaries, so they only load on the bundled runner
 fn apply_hooks(task: &Task, cfg: &Config, rn: &Runner, c: &mut Command) {
     let b = &cfg.bottle;
@@ -531,7 +545,7 @@ fn apply_hooks(task: &Task, cfg: &Config, rn: &Runner, c: &mut Command) {
     }
     let pace = cfg.frame_cap > 0 && b.graphics_backend == GraphicsBackend::D3dmetal;
     let icon = runner::game_app_icon();
-    if !pace && icon.is_none() {
+    if !pace && icon.is_none() && !cfg.native_fullscreen {
         return;
     }
     let p = match runner::hooks_path() {
@@ -548,6 +562,9 @@ fn apply_hooks(task: &Task, cfg: &Config, rn: &Runner, c: &mut Command) {
     }
     if let Some(icon) = icon {
         c.env("ASAHIRO_DOCK_ICON", icon);
+    }
+    if cfg.native_fullscreen {
+        c.env("ASAHIRO_NATIVE_FULLSCREEN", "1");
     }
 }
 

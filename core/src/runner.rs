@@ -396,6 +396,24 @@ pub fn select_graphics(task: &Task, want: Graphics, gptk: Option<&Path>, bottle:
             }
         }
     }
+    if want == Graphics::D3dmetal {
+        // gptk's nvapi64 calls itself nvapi.dll and wine looks its builtin up by that name. without the alias it
+        // loads without its unix side, nvapi never initializes and games hide dlss
+        for (arch, alias, target) in [("x86_64-windows", "nvapi.dll", "nvapi64.dll"), ("x86_64-unix", "nvapi.so", "nvapi64.so")] {
+            let link = wine_lib.join(arch).join(alias);
+            let rel = format!("{}/{}", arch, alias);
+            if !added.contains(&rel) {
+                if link.exists() || link.is_symlink() {
+                    std::fs::rename(&link, wine_lib.join(arch).join(format!("{}.orig", alias)))?;
+                }
+                added.push(rel);
+            }
+            if std::fs::read_link(&link).ok().as_deref() != Some(Path::new(target)) {
+                let _ = std::fs::remove_file(&link);
+                std::os::unix::fs::symlink(target, &link)?;
+            }
+        }
+    }
     std::fs::write(&added_path, added.join("\n"))?;
     std::fs::write(&marker, want.name())?;
 

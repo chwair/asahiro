@@ -2,20 +2,25 @@
 // ASAHIRO_FRAME_CAP paces d3dmetal: it presents with -[MTLCommandBuffer presentDrawable:], which shows frames as soon as
 // they are ready, so a capped game lands on uneven vsyncs. presentDrawable:afterMinimumDuration: keeps every frame up for
 // the same number of refreshes. ASAHIRO_DOCK_ICON names an icon wine shows in the dock instead of the exe's square one.
+// ASAHIRO_NATIVE_FULLSCREEN moves the window wine shows over the whole screen into a macos fullscreen space, the only
+// place metal presents direct to display instead of through the window server's compositor.
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <mach-o/dyld.h>
+#include <dispatch/dispatch.h>
 
 typedef void (*present_fn)(id, SEL, id);
 typedef void (*present_min_fn)(id, SEL, id, double);
 typedef void (*set_fn)(id, SEL, id);
+typedef void (*void_fn)(id, SEL);
+typedef void (*behavior_fn)(id, SEL, unsigned long);
 
 static double min_duration;
 static const char *dock_icon_path;
-static int icon_hooked, debug;
+static int icon_hooked, fullscreen_hooked, native_fullscreen, debug;
 #define DBG(...) do { if (debug) fprintf(stderr, "asahiro-hooks: " __VA_ARGS__); } while (0)
 static id dock_icon;
 static Class app_class;
@@ -98,6 +103,61 @@ static void hook_icon(void) {
     }));
 }
 
+// NSWindowStyleMaskFullScreen and the fullscreen collection behaviors, appkit's headers are left out so the
+// hooks never pull appkit into a wine process before wine loads it
+#define STYLE_FULLSCREEN (1UL << 14)
+#define BEHAVIOR_PRIMARY (1UL << 7)
+#define BEHAVIOR_AUXILIARY (1UL << 8)
+static char moved_key;
+static void_fn update_fullscreen_orig;
+static behavior_fn adjust_behavior_orig;
+static set_fn ns_toggle_fullscreen;
+
+static int moved(id window) {
+    return objc_getAssociatedObject(window, &moved_key) != nil;
+}
+
+// wine only lets resizable windows into a fullscreen space and takes them back out otherwise, its own toggle
+// also refuses maximized windows, so the moved window keeps the primary behavior and enters through NSWindow.
+// a window someone takes out of fullscreen stays marked and is not pushed back in
+static void hook_fullscreen(void) {
+    Class wine_window = objc_getClass("WineWindow");
+    Class ns_window = objc_getClass("NSWindow");
+    Method update = wine_window ? class_getInstanceMethod(wine_window, sel_registerName("updateFullscreen")) : NULL;
+    Method adjust = wine_window ? class_getInstanceMethod(wine_window, sel_registerName("adjustFullScreenBehavior:")) : NULL;
+    Method toggle = ns_window ? class_getInstanceMethod(ns_window, sel_registerName("toggleFullScreen:")) : NULL;
+    if (!update || !adjust || !toggle) return;
+    fullscreen_hooked = 1;
+    DBG("fullscreen hooks installed in pid %d\n", getpid());
+    ns_toggle_fullscreen = (set_fn)method_getImplementation(toggle);
+    adjust_behavior_orig = (behavior_fn)method_getImplementation(adjust);
+    method_setImplementation(adjust, imp_implementationWithBlock(^(id self, unsigned long behavior) {
+        if (!moved(self)) {
+            adjust_behavior_orig(self, sel_registerName("adjustFullScreenBehavior:"), behavior);
+            return;
+        }
+        behavior = (behavior | BEHAVIOR_PRIMARY) & ~BEHAVIOR_AUXILIARY;
+        if (behavior != ((unsigned long (*)(id, SEL))objc_msgSend)(self, sel_registerName("collectionBehavior")))
+            ((void (*)(id, SEL, unsigned long))objc_msgSend)(self, sel_registerName("setCollectionBehavior:"), behavior);
+    }));
+    update_fullscreen_orig = (void_fn)method_getImplementation(update);
+    method_setImplementation(update, imp_implementationWithBlock(^(id self) {
+        update_fullscreen_orig(self, sel_registerName("updateFullscreen"));
+        // isFullscreen is wine's own test, the window covers a whole screen outside a fullscreen space
+        if (moved(self) || !((BOOL (*)(id, SEL))objc_msgSend)(self, sel_registerName("isFullscreen"))) return;
+        objc_setAssociatedObject(self, &moved_key, (id)objc_getClass("NSObject"), OBJC_ASSOCIATION_ASSIGN);
+        DBG("moving %p into a fullscreen space\n", self);
+        // appkit refuses to start the transition from inside wine's frame update
+        dispatch_async(dispatch_get_main_queue(), ^{
+            unsigned long style = ((unsigned long (*)(id, SEL))objc_msgSend)(self, sel_registerName("styleMask"));
+            if (style & STYLE_FULLSCREEN) return;
+            ((void (*)(id, SEL, unsigned long))objc_msgSend)(self, sel_registerName("adjustFullScreenBehavior:"),
+                ((unsigned long (*)(id, SEL))objc_msgSend)(self, sel_registerName("collectionBehavior")));
+            ns_toggle_fullscreen(self, sel_registerName("toggleFullScreen:"), nil);
+        });
+    }));
+}
+
 // the classes that implement presentDrawable:, the gpu drivers' own command buffers inherit metal's.
 // the others wrap the real command buffer for the metal hud, validation and the metal 3 on 4 layer
 static const char *paced_classes[] = { "_MTLCommandBuffer", "MTLToolsCommandBuffer", "MTLCountersCommandBuffer", "MTL3On4CommandBuffer" };
@@ -109,6 +169,7 @@ static int paced[PACED_COUNT];
 // cheap, unlike listing an image's classes, and dyld calls this without objc's runtime lock held
 static void image_loaded(const struct mach_header *mh, intptr_t slide) {
     if (dock_icon_path && !icon_hooked) hook_icon();
+    if (native_fullscreen && !fullscreen_hooked) hook_fullscreen();
     if (min_duration <= 0) return;
     for (unsigned int i = 0; i < PACED_COUNT; i++) {
         if (paced[i]) continue;
@@ -127,9 +188,10 @@ __attribute__((constructor)) static void hooks_init(void) {
     // half a millisecond of slack so timer jitter never pushes a frame onto the vsync after its slot
     if (fps > 0) min_duration = 1.0 / fps - 0.0005;
     dock_icon_path = getenv("ASAHIRO_DOCK_ICON");
+    native_fullscreen = getenv("ASAHIRO_NATIVE_FULLSCREEN") != NULL;
     debug = getenv("ASAHIRO_HOOKS_DEBUG") != NULL;
     DBG("loaded in pid %d, cap %s, icon %s\n", getpid(), cap ? cap : "none", dock_icon_path ? dock_icon_path : "none");
-    if (min_duration <= 0 && !dock_icon_path) return;
+    if (min_duration <= 0 && !dock_icon_path && !native_fullscreen) return;
     sel_present = sel_registerName("presentDrawable:");
     sel_present_min = sel_registerName("presentDrawable:afterMinimumDuration:");
     sel_drawable_min = sel_registerName("presentAfterMinimumDuration:");

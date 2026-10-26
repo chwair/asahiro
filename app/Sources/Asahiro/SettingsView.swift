@@ -46,7 +46,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .game: "folder voice language resolution fullscreen display shortcut applications verify repair"
         case .compatibility: "wine runner crossover bottle windows msync retina command option alt steam shim launch fix registry"
-        case .graphics: "d3dmetal dxmt dxvk metal hud metalfx directx dx12 dlss frame cap fps vsync"
+        case .graphics: "d3dmetal dxmt dxvk metal hud metalfx directx dx12 dlss ray tracing raytracing dxr fullscreen direct notch frame cap fps vsync"
         case .mods: "zzmi xxmi mods shader hunting"
         case .advanced: "arguments dll overrides environment variables"
         case .about: "version updates logs rosetta"
@@ -359,6 +359,11 @@ struct SettingsView: View {
             SettingsToggle(title: "DirectX 12", subtitle: "D3DMetal only. Much less shader stutter.", isOn: c.useD3d12)
                 .disabled(!d3dmetal)
             SettingsToggle(title: "DLSS and NVAPI extensions", isOn: c.bottle.dlss)
+            SettingsToggle(title: "Ray tracing", subtitle: "D3DMetal with DirectX 12 only.", isOn: c.bottle.raytracing)
+                .disabled(!d3dmetal || !c.wrappedValue.useD3d12)
+            SettingsToggle(title: "macOS fullscreen", subtitle: "Bundled runner only. Lets frames go direct to the display, keeps the game below the notch.",
+                           isOn: c.nativeFullscreen)
+                .disabled(!bundled)
         }
         let paced = c.wrappedValue.bottle.graphicsBackend == GraphicsBackend.dxmt.rawValue || (d3dmetal && bundled)
         SettingsGroup(header: "Frame pacing",
