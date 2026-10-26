@@ -41,6 +41,19 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .about: .teal
         }
     }
+    // extra words the sidebar search matches, so a setting can be found without knowing its page
+    var keywords: String {
+        switch self {
+        case .game: "folder voice language resolution fullscreen display shortcut applications verify repair"
+        case .compatibility: "wine runner crossover bottle windows msync retina command option alt steam shim launch fix registry"
+        case .graphics: "d3dmetal dxmt dxvk metal hud metalfx directx dx12 dlss frame cap fps vsync"
+        case .mods: "zzmi xxmi mods shader hunting"
+        case .advanced: "arguments dll overrides environment variables"
+        case .about: "version updates logs rosetta"
+        }
+    }
+    // the sidebar splits into the everyday pages and the rest, like system settings does
+    var group: Int { self == .advanced || self == .about ? 1 : 0 }
 }
 
 struct SettingsView: View {
@@ -51,42 +64,36 @@ struct SettingsView: View {
     @State private var confirmDelete = false
     @State private var shortcutStatus = GameShortcut.status
     @State private var confirmReplaceShortcut = false
-    @Namespace private var sidebar
+    @State private var query = ""
 
     var body: some View {
         HStack(spacing: 0) {
             sidebarList
-            Rectangle().fill(.white.opacity(0.08)).frame(width: 1)
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text(section.rawValue).font(.system(size: 20, weight: .semibold))
+                    Text(section.rawValue).font(.system(size: 15, weight: .bold))
                     Spacer()
-                    Button(action: done) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .frame(width: 26, height: 26)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(PressStyle())
-                    .glassEffect(.regular.interactive(), in: Circle())
-                    .keyboardShortcut(.cancelAction)
+                    CloseButton(action: done)
                 }
-                .padding(.horizontal, Space.xl)
-                .padding(.top, 20)
-                .padding(.bottom, Space.l)
+                .padding(.leading, Space.xl)
+                .padding(.trailing, Space.l)
+                .frame(height: 56)
 
                 ScrollView {
                     if let binding = Binding($draft) {
-                        VStack(alignment: .leading, spacing: 22) { page(binding) }
-                            .padding(.horizontal, Space.xl)
-                            .padding(.bottom, Space.xl)
+                        VStack(alignment: .leading, spacing: 22) {
+                            page(binding)
+                        }
+                        .padding(.horizontal, Space.xl)
+                        .padding(.top, Space.xs)
+                        .padding(.bottom, Space.xl)
                     }
                 }
                 .scrollIndicators(.automatic)
                 .id(section)
             }
         }
-        .frame(width: 800, height: 540)
+        .frame(width: 820, height: 560)
         .onAppear { draft = model.config }
         // settings apply as you change them, debounced so typing does not hammer the disk
         .task(id: draft) {
@@ -129,42 +136,66 @@ struct SettingsView: View {
         close()
     }
 
+    private var matches: [SettingsSection] {
+        let terms = query.lowercased().split(separator: " ")
+        return SettingsSection.allCases.filter { s in
+            let hay = "\(s.rawValue) \(s.keywords)".lowercased()
+            return terms.allSatisfy { hay.contains($0) }
+        }
+    }
+
     private var sidebarList: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsSection.allCases) { s in
-                let on = section == s
-                Button {
-                    withAnimation(Motion.snap) { section = s }
-                } label: {
-                    HStack(spacing: Space.s) {
-                        Image(systemName: s.symbol)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 20, height: 20)
-                            .background(s.tint.gradient, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-                        Text(s.rawValue)
-                            .font(.system(size: 13, weight: on ? .semibold : .regular))
-                            .foregroundStyle(on ? Color.zzzInk : Color.primary)
-                        Spacer()
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                TextField("Search", text: $query)
+                    .textFieldStyle(.plain)
+                    .onSubmit { if let first = matches.first { section = first } }
+                if !query.isEmpty {
+                    Button {
+                        query = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 6)
-                    .frame(height: 30)
-                    .background {
-                        if on {
-                            RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                                .fill(Color.zzzYellow)
-                                .matchedGeometryEffect(id: "selection", in: sidebar)
+                    .buttonStyle(.plain)
+                }
+            }
+            .font(.system(size: 13))
+            .padding(.horizontal, 10)
+            .frame(height: 30)
+            .background(.white.opacity(0.08), in: Capsule())
+            .padding(.horizontal, 10)
+            .padding(.top, 14)
+            .padding(.bottom, Space.xs)
+
+            List(selection: Binding(get: { section }, set: { if let s = $0 { section = s } })) {
+                ForEach([0, 1], id: \.self) { group in
+                    let rows = matches.filter { $0.group == group }
+                    if !rows.isEmpty {
+                        Section {
+                            ForEach(rows) { s in
+                                Label {
+                                    Text(s.rawValue)
+                                } icon: {
+                                    SectionIcon(section: s, size: 20)
+                                }
+                                .tag(s)
+                            }
                         }
                     }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
             }
-            Spacer()
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .overlay {
+                if matches.isEmpty {
+                    Text("No Results").font(.system(size: 13)).foregroundStyle(.secondary)
+                }
+            }
         }
-        .padding(.horizontal, Space.s + 2)
-        .padding(.top, 56)
-        .frame(width: 196)
+        .frame(width: 214)
+        .background(.white.opacity(0.045), in: RoundedRectangle(cornerRadius: Radius.panel - 8, style: .continuous))
+        .padding(8)
     }
 
     @ViewBuilder
@@ -397,6 +428,7 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func aboutPage() -> some View {
+        AboutHero()
         UpdateSettings()
         SettingsGroup(header: "Environment") {
             statusRow("Runner", ok: model.wine?.runnerInstalled == true,
@@ -409,7 +441,6 @@ struct SettingsView: View {
         SettingsGroup(header: "Troubleshooting") {
             SettingsPath(title: "Logs", path: model.logsFolder, onReveal: { model.reveal(model.logsFolder) })
         }
-        AboutHero()
     }
 
     private func statusRow(_ title: String, ok: Bool, value: String) -> some View {
@@ -419,6 +450,25 @@ struct SettingsView: View {
                 StatusDot(ok: ok)
             }
         }
+    }
+}
+
+// the coloured rounded square system settings puts next to each pane
+struct SectionIcon: View {
+    let section: SettingsSection
+    var size: CGFloat = 22
+
+    var body: some View {
+        // a resizable glyph in a fixed box, so the sidebar's own icon sizing can not push it off centre
+        Image(systemName: section.symbol)
+            .resizable()
+            .scaledToFit()
+            .fontWeight(.semibold)
+            .foregroundStyle(.white)
+            .frame(width: size * 0.58, height: size * 0.58)
+            .frame(width: size, height: size)
+            .background(section.tint.gradient, in: RoundedRectangle(cornerRadius: size * 0.26, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: size * 0.26, style: .continuous).strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
     }
 }
 
@@ -470,6 +520,9 @@ struct InstallSheet: View {
     @EnvironmentObject var model: LauncherModel
     let close: () -> Void
     @State private var draft: AppConfig?
+    // only offered while there is no app of that name yet, the first install is when it is wanted
+    @State private var offerShortcut = GameShortcut.status == .missing
+    @State private var addShortcut = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -501,6 +554,13 @@ struct InstallSheet: View {
                     }
                 }
             }
+            if offerShortcut {
+                SettingsGroup {
+                    SettingsToggle(title: "Add to Applications",
+                                   subtitle: "A Zenless Zone Zero app that starts the game without opening the launcher.",
+                                   isOn: $addShortcut)
+                }
+            }
             if let s = model.state {
                 SettingsGroup(header: "Space") {
                     SettingsValue(title: "Download", value: formatBytes(s.downloadSize))
@@ -513,6 +573,7 @@ struct InstallSheet: View {
                 Button("Cancel", action: close).keyboardShortcut(.cancelAction)
                 Button("Install") {
                     if let draft, draft != model.config { model.saveConfig(draft) }
+                    model.addShortcutAfterInstall = offerShortcut && addShortcut
                     close()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { model.start(.install) }
                 }

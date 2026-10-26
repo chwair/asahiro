@@ -29,6 +29,23 @@ struct GlassOverlay<Content: View>: View {
     }
 }
 
+// the dismiss button panels inside the launcher put in their top right corner, esc does the same
+struct CloseButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 14, height: 14)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .keyboardShortcut(.cancelAction)
+        .help("Close")
+    }
+}
+
 struct GlassMenuItem: Identifiable {
     let id = UUID()
     let title: String

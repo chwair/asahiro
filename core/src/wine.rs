@@ -397,6 +397,35 @@ fn webview_fix_lines(bottle: &Path) -> Vec<String> {
     lines
 }
 
+// reads user.reg directly, the wineserver is not running between launches so the file is what wine will load
+fn registry_current(bottle: &Path, b: &BottleConfig) -> bool {
+    let Ok(bytes) = std::fs::read(bottle.join("user.reg")) else { return false };
+    let text = String::from_utf8_lossy(&bytes);
+    if text.contains("\"MIHOYOSDK_WEBVIEW_RENDER_METHOD_h1573598267\"") || text.contains("\"HOYO_WEBVIEW_RENDER_METHOD_ABTEST_") {
+        return false;
+    }
+    let mut section = false;
+    let mut values = std::collections::HashMap::new();
+    for l in text.lines() {
+        if l.starts_with('[') {
+            section = l.starts_with("[Software\\\\Wine\\\\Mac Driver]");
+        } else if section {
+            if let Some((k, v)) = l.split_once('=') {
+                values.insert(k.trim_matches('"').to_string(), v.trim_matches('"').to_string());
+            }
+        }
+    }
+    let yn = |v: bool| if v { "y" } else { "n" };
+    [
+        ("RetinaMode", b.retina),
+        ("LeftCommandIsCtrl", b.left_cmd_is_ctrl),
+        ("LeftOptionIsAlt", b.left_option_is_alt),
+        ("RightOptionIsAlt", b.right_option_is_alt),
+    ]
+    .iter()
+    .all(|(k, v)| values.get(*k).map(String::as_str) == Some(yn(*v)))
+}
+
 // writes registry tweaks through a batch file so the bottle only boots once
 pub fn apply_bottle(task: &Task, cfg: &Config) -> Result<()> {
     let b = &cfg.bottle;
@@ -407,6 +436,12 @@ pub fn apply_bottle(task: &Task, cfg: &Config) -> Result<()> {
     let rn = Runner::resolve(cfg, Some(task))?;
     task.status("Configuring bottle");
     write_bottle_env(b)?;
+    let marker = bottle.join(".asahiro-winver");
+    let winver_current = std::fs::read_to_string(&marker).ok().as_deref() == Some(b.windows_version.as_str());
+    // booting wine for the batch file costs seconds on every launch, skip it when the registry already matches
+    if winver_current && registry_current(&bottle, b) {
+        return Ok(());
+    }
     let yn = |v: bool| if v { "y" } else { "n" };
     let mut bat = vec![
         "@echo off".to_string(),
@@ -435,8 +470,7 @@ pub fn apply_bottle(task: &Task, cfg: &Config) -> Result<()> {
     run_logged(task, c, "bottle configuration")?;
     let _ = std::fs::remove_file(bat_path);
 
-    let marker = bottle.join(".asahiro-winver");
-    if std::fs::read_to_string(&marker).ok().as_deref() != Some(b.windows_version.as_str()) {
+    if !winver_current {
         let mut c = rn.wine(cfg, None);
         c.arg("winecfg").arg("-v").arg(&b.windows_version);
         run_logged(task, c, "setting the windows version")?;
@@ -677,7 +711,7 @@ pub fn launch(task: &Task, cfg: &Config) -> Result<()> {
                     break;
                 }
             }
-            std::thread::sleep(Duration::from_millis(1000));
+            std::thread::sleep(Duration::from_millis(500));
         }
         // the helper exits on its own after injecting, this only reaps it or stops a stuck one
         if let Some(mut helper) = injector {

@@ -62,6 +62,9 @@ struct ModsView: View {
                     .padding(.bottom, Space.m)
                 if model.mods.isEmpty {
                     emptyState
+                } else if visible.isEmpty {
+                    noMatches
+                    bulkBar
                 } else {
                     table
                     bulkBar
@@ -83,6 +86,10 @@ struct ModsView: View {
             return !urls.isEmpty
         } isTargeted: { dropTargeted = $0 }
         .task { await model.loadMods() }
+        // mods are often dropped into the folder from finder, pick them up when coming back
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.reloadMods()
+        }
         // a renamed folder gets a new id, keep the selection pointing at mods that still exist
         .onChange(of: model.mods) { _, mods in
             let ids = Set(mods.map(\.id))
@@ -106,47 +113,77 @@ struct ModsView: View {
 
     private var header: some View {
         HStack(spacing: Space.s) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Mods").font(.system(size: 20, weight: .semibold))
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Mods").font(.system(size: 15, weight: .bold))
+                Text(subtitle)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                    .animation(Motion.quick, value: subtitle)
             }
             Spacer()
             if model.zzmi?.installed == true {
-                Button {
-                    model.importMods(chooseModArchives())
-                } label: {
-                    Label("Add Mods", systemImage: "plus")
+                Toggle("Load mods", isOn: Binding(get: { model.config?.modsEnabled == true }, set: { on in
+                    guard var c = model.config else { return }
+                    c.modsEnabled = on
+                    model.saveConfig(c)
+                }))
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .tint(.zzzYellow)
+                .font(.system(size: 12))
+                .help("Loads ZZMI into the game at launch")
+                .padding(.trailing, Space.s)
+                Button(action: model.reloadMods) {
+                    Image(systemName: "arrow.clockwise")
                 }
-                .disabled(model.activity != nil)
+                .help("Rescan the Mods folder")
                 Button {
                     if let p = model.zzmi?.modsPath { model.reveal(p) }
                 } label: {
                     Image(systemName: "folder")
                 }
                 .help("Show the Mods folder in Finder")
+                Button {
+                    model.importMods(chooseModArchives())
+                } label: {
+                    Label("Add Mods", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.zzzYellow)
+                .foregroundStyle(Color.zzzInk)
+                .disabled(model.activity != nil)
             }
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .frame(width: 26, height: 26)
-                    .contentShape(Circle())
-            }
-            .buttonStyle(PressStyle())
-            .glassEffect(.regular.interactive(), in: Circle())
-            .keyboardShortcut(.cancelAction)
-            .padding(.leading, Space.xs)
+            CloseButton(action: close)
+                .padding(.leading, Space.xs)
         }
-        .controlSize(.small)
-        .padding(.horizontal, Space.xl)
-        .padding(.top, 20)
-        .padding(.bottom, Space.l)
+        .controlSize(.regular)
+        .padding(.leading, Space.xl)
+        .padding(.trailing, Space.l)
+        .frame(height: 60)
+    }
+
+    private var noMatches: some View {
+        VStack(spacing: Space.s) {
+            Spacer()
+            Image(systemName: "magnifyingglass").font(.system(size: 28)).foregroundStyle(.secondary)
+            Text("No mods match").font(.system(size: 15, weight: .semibold))
+            Button("Clear Filters") {
+                search = ""
+                status = .all
+                character = nil
+            }
+            .controlSize(.small)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var subtitle: String {
         if let a = model.activity, a.kind == .importMod || a.kind == .zzmiInstall { return a.status }
         guard let z = model.zzmi, z.installed else { return "ZZMI is not installed yet" }
         let on = model.mods.filter(\.enabled).count
-        let state = z.enabled ? "loaded when the game starts" : "mods are turned off in Settings"
+        let state = z.enabled ? "loaded when the game starts" : "mods are off"
         return "\(on) of \(model.mods.count) enabled · \(state)"
     }
 

@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         DispatchQueue.global(qos: .utility).async { GameShortcut.migrateIfNeeded() }
         if LauncherModel.shared.quickMode {
-            NSApp.setActivationPolicy(.accessory)
+            LauncherModel.shared.startBouncing()
             return
         }
         // swiftpm executables start as background processes unless told otherwise
@@ -40,6 +40,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if url.host == "launch" {
             LauncherModel.shared.requestQuickLaunch()
         }
+    }
+
+    // clicking the bouncing icon during a quick launch brings the launcher up instead of a new window
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard LauncherModel.shared.quickMode else { return true }
+        LauncherModel.shared.showLauncher()
+        return false
     }
 
     // a quick launch runs with its window hidden on purpose, quitting is handled when the game exits

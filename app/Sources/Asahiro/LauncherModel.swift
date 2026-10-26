@@ -89,6 +89,7 @@ final class LauncherModel: ObservableObject {
     @Published var zzmi: ZzmiStatus?
     @Published var mods: [ModInfo] = []
     @Published var showMods = false
+    @Published var modsLoading = false
     @Published var modsInjected: Bool?
     @Published var confirmApplyPredownload = false
     @Published var checking = false
@@ -108,12 +109,22 @@ final class LauncherModel: ObservableObject {
         } catch {
             alert = error.localizedDescription
         }
+        // a quick launch only waits for the state, art and mods catch up once the game is on its way
+        if quickPending {
+            await refresh()
+            loaded = true
+            await runQuickLaunch(fresh: true)
+            async let artTask: Void = loadArt()
+            async let modsTask: Void = loadMods()
+            _ = await (artTask, modsTask)
+            return
+        }
         async let artTask: Void = loadArt()
         async let stateTask: Void = refresh()
         async let modsTask: Void = loadMods()
         _ = await (artTask, stateTask, modsTask)
         loaded = true
-        if quickPending { await runQuickLaunch() }
+        if quickPending { await runQuickLaunch(fresh: false) }
     }
 
     func loadArt() async {
@@ -141,6 +152,16 @@ final class LauncherModel: ObservableObject {
         zzmi = try? await Core.call(["cmd": "zzmi_status", "refresh": refresh], as: ZzmiStatus.self)
         if let list = try? await Core.call(["cmd": "list_mods"], as: [ModInfo].self) {
             mods = list
+        }
+    }
+
+    // rescans the mods folder, a rescan already running covers the request
+    func reloadMods() {
+        guard !modsLoading else { return }
+        modsLoading = true
+        Task {
+            await loadMods()
+            modsLoading = false
         }
     }
 
@@ -209,14 +230,17 @@ final class LauncherModel: ObservableObject {
         }
         quickMode = true
         hideLauncher()
+        startBouncing()
         quickPending = true
-        if loaded { Task { await runQuickLaunch() } }
+        if loaded { Task { await runQuickLaunch(fresh: false) } }
     }
 
-    private func runQuickLaunch() async {
+    // a process that just started has fetched the state already, a running one may hold an old manifest
+    private func runQuickLaunch(fresh: Bool) async {
         quickPending = false
-        await refresh(force: true)
+        if !fresh { await refresh(force: true) }
         if gameRunning {
+            stopBouncing()
             NSApp.terminate(nil)
             return
         }
@@ -234,10 +258,42 @@ final class LauncherModel: ObservableObject {
     }
 
     func showLauncher() {
+        stopBouncing()
         quickMode = false
         NSApp.setActivationPolicy(.regular)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private var attentionRequest: Int?
+    private var bounceWatch: Task<Void, Never>?
+
+    // the shortcut stub exits at once, so while wine boots asahiro takes its place in the dock with the
+    // game's icon and bounces until the game's own icon shows up
+    func startBouncing() {
+        guard attentionRequest == nil else { return }
+        if let icon = NSImage(contentsOf: GameShortcut.gameIconURL) { NSApp.applicationIconImage = icon }
+        NSApp.setActivationPolicy(.regular)
+        attentionRequest = NSApp.requestUserAttention(.criticalRequest)
+        bounceWatch = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                let up = NSWorkspace.shared.runningApplications.contains {
+                    $0.bundleIdentifier == GameShortcut.gameBundleID && $0.activationPolicy == .regular
+                }
+                if up { self?.stopBouncing() }
+            }
+        }
+    }
+
+    func stopBouncing() {
+        bounceWatch?.cancel()
+        bounceWatch = nil
+        guard let request = attentionRequest else { return }
+        attentionRequest = nil
+        NSApp.cancelUserAttentionRequest(request)
+        NSApp.applicationIconImage = nil
+        if quickMode { NSApp.setActivationPolicy(.accessory) }
     }
 
     // explicit check from the version pill, keeps the spinner up for a moment so it reads as work
@@ -266,8 +322,9 @@ final class LauncherModel: ObservableObject {
     }
 
     var primary: PrimaryAction {
+        // the launch task stays open for as long as the game runs
+        if gameRunning, activity == nil || activity?.kind == .launch { return .playing }
         if activity != nil { return .busy }
-        if gameRunning { return .playing }
         guard let state else { return offline == nil ? .loading : .unavailable }
         if !state.installed { return state.partialDownload ? .resume : .install }
         if state.updateAvailable { return .update }
@@ -279,8 +336,21 @@ final class LauncherModel: ObservableObject {
         case .install, .resume: confirmInstall = true
         case .update: start(.update)
         case .launch: start(.launch)
+        case .playing: stopGame()
         case .busy: togglePause()
         default: break
+        }
+    }
+
+    // the game may also have been started by an earlier asahiro, then there is no task to cancel
+    func stopGame() {
+        if activity?.kind == .launch {
+            cancel()
+            return
+        }
+        Task {
+            try? await Core.run(["cmd": "stop_game"])
+            await refresh()
         }
     }
 
@@ -345,11 +415,13 @@ final class LauncherModel: ObservableObject {
             modsInjected = event.ok == true
         case "game_started":
             gameRunning = true
+            stopBouncing()
             if config?.hideLauncherWhilePlaying == true, !quickMode {
                 NSApp.hide(nil)
             }
         case "finished":
             activity = nil
+            if kind == .launch { stopBouncing() }
             if kind == .launch, quickMode {
                 gameRunning = false
                 // a quick launch leaves no trace once the game closes, a failure brings the launcher up
@@ -374,9 +446,25 @@ final class LauncherModel: ObservableObject {
                 }
             }
             if kind == .launch { modsInjected = nil }
+            if kind == .install, event.ok == true, addShortcutAfterInstall {
+                addShortcutAfterInstall = false
+                createShortcut()
+            }
             Task { await refresh(force: kind == .update || kind == .install || kind == .applyPredownload) }
         default:
             break
+        }
+    }
+
+    // set from the install sheet, the shortcut is made once the game is actually there
+    var addShortcutAfterInstall = false
+
+    func createShortcut() {
+        guard GameShortcut.status == .missing else { return }
+        do {
+            try GameShortcut.create(iconSource: art?.local.shortcutIcon)
+        } catch {
+            alert = error.localizedDescription
         }
     }
 

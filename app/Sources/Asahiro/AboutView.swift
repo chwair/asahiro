@@ -1,94 +1,32 @@
+import AppKit
 import SwiftUI
 
-// the banner at the bottom of the about page: a shine sweeps across the wordmark now and then,
-// and a strip of hazard tape scrolls along the bottom
+// the top of the about page, laid out like the about pane in system settings: the icon centred
+// over the name and version, with the project link underneath
 struct AboutHero: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .center, spacing: Space.m) {
-                wordmark
-                Spacer(minLength: Space.m)
-                HStack(spacing: Space.s) {
-                    Text(Updater.currentVersion == "dev" ? "dev" : "v\(Updater.currentVersion)")
-                        .font(.displayMedium(12))
-                        .foregroundStyle(Color.zzzInk)
-                        .padding(.horizontal, 10)
-                        .frame(height: 24)
-                        .background(Color.zzzYellow, in: ChamferShape(cut: 6, leading: false))
-                        .textSelection(.enabled)
-                    Link(destination: Updater.repo) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "chevron.left.forwardslash.chevron.right")
-                                .font(.system(size: 10, weight: .bold))
-                            Text("GITHUB").tracking(1)
-                            Image(systemName: "arrow.up.right")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .font(.displayMedium(12))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .frame(height: 24)
-                        .background(.white.opacity(0.1), in: ChamferShape(cut: 6, leading: false))
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PressStyle())
-                    .help(Updater.repo.absoluteString)
-                }
+        VStack(spacing: Space.s) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+                .shadow(color: .black.opacity(0.3), radius: 10, y: 4)
+                .padding(.bottom, Space.xs)
+            Text("Asahiro")
+                .font(.system(size: 22, weight: .bold))
+            Text(Updater.currentVersion == "dev" ? "Development build" : "Version \(Updater.currentVersion)")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+            Link(destination: Updater.repo) {
+                Label("View on GitHub", systemImage: "arrow.up.right.square")
             }
-            .padding(.horizontal, Space.xl)
-            .padding(.vertical, Space.l)
-
-            HazardTape(paused: reduceMotion)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(Updater.repo.absoluteString)
+            .padding(.top, Space.xs)
         }
-        .background {
-            ZStack {
-                Color.zzzPanel
-                Stripes(spacing: 18).fill(.white.opacity(0.025))
-            }
-        }
-        .clipShape(ChamferShape(cut: 14, leading: false))
-        .overlay(ChamferShape(cut: 14, leading: false).stroke(.white.opacity(0.08)))
-    }
-
-    private var wordmark: some View {
-        let title = Text("ASAHIRO")
-            .font(.display(38))
-            .foregroundStyle(.white)
-            .fixedSize()
-
-        return title.overlay {
-            TimelineView(.animation(paused: reduceMotion)) { ctx in
-                GeometryReader { g in
-                    // one sweep every five seconds, idle in between
-                    let t = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 5)
-                    let p = min(t / 1.1, 1)
-                    LinearGradient(colors: [.clear, Color.zzzYellow, .white, Color.zzzYellow, .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                        .frame(width: 50)
-                        .rotationEffect(.degrees(18))
-                        .offset(x: -70 + p * (g.size.width + 140))
-                        .opacity(reduceMotion ? 0 : 1)
-                }
-            }
-            .mask(title)
-            .allowsHitTesting(false)
-        }
-    }
-}
-
-// a thin strip of yellow and black caution stripes that crawls sideways
-private struct HazardTape: View {
-    let paused: Bool
-
-    var body: some View {
-        TimelineView(.animation(paused: paused)) { ctx in
-            Stripes(spacing: 14, phase: paused ? 0 : CGFloat(ctx.date.timeIntervalSinceReferenceDate * 16))
-                .fill(Color.zzzInk)
-                .background(Color.zzzYellow)
-        }
-        .frame(height: 8)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, Space.l)
     }
 }
 

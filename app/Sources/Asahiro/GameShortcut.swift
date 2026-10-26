@@ -5,6 +5,8 @@ import CoreServices
 // so it can live in the dock and launchpad like a native game
 enum GameShortcut {
     static let bundleID = "com.chair.asahiro.zzz-shortcut"
+    // the bundle core runs wine from, see GAME_BUNDLE_ID in runner.rs
+    static let gameBundleID = "com.chair.asahiro.game"
     // shortcuts made before the identifier change still count as ours and get migrated
     private static let legacyBundleIDs = ["dev.asahiro.zzz-shortcut"]
 

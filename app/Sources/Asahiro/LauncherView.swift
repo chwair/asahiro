@@ -179,7 +179,6 @@ private struct LeftCorner: View {
 // installed version plus an explicit update check, replaces the old toolbar button
 private struct VersionPill: View {
     @EnvironmentObject var model: LauncherModel
-    @State private var spin = 0.0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -187,23 +186,36 @@ private struct VersionPill: View {
                 .font(.display(13, italic: false))
                 .kerning(0.4)
                 .padding(.leading, Space.m)
-            .padding(.trailing, Space.s)
+                .padding(.trailing, Space.s)
 
             Rectangle().fill(.white.opacity(0.14)).frame(width: 1, height: 16)
 
             Button(action: model.checkForUpdates) {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 11, weight: .bold))
-                        .rotationEffect(.degrees(spin))
-                    Text(model.checking ? "Checking" : (model.checkResult ?? "Check for updates"))
+                    // separate views so the spin ends with the check instead of finishing its turn on the result mark
+                    Group {
+                        if model.checking {
+                            Image(systemName: "arrow.trianglehead.2.clockwise")
+                                .symbolEffect(.rotate.byLayer, options: .repeat(.continuous).speed(2.5))
+                        } else {
+                            Image(systemName: symbol)
+                        }
+                    }
+                    .font(.system(size: 11, weight: .bold))
+                    .transition(.scale(scale: 0.4).combined(with: .opacity))
+                    .frame(width: 14)
+                    Text(label)
                         .font(.system(size: 12, weight: .medium))
-                        .contentTransition(.opacity)
+                        .contentTransition(.interpolate)
+                        .id(label)
+                        .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                                removal: .move(edge: .top).combined(with: .opacity)))
                 }
                 .foregroundStyle(model.checkResult == nil ? Color.primary.opacity(0.85) : Color.zzzYellow)
                 .padding(.leading, Space.s)
                 .padding(.trailing, Space.m)
                 .frame(height: 30)
+                .clipped()
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressStyle())
@@ -211,15 +223,21 @@ private struct VersionPill: View {
         }
         .frame(height: 30)
         .glassEffect(.regular.interactive(), in: Capsule())
-        .animation(Motion.quick, value: model.checking)
-        .animation(Motion.quick, value: model.checkResult)
-        .onChange(of: model.checking) { _, now in
-            if now {
-                withAnimation(.linear(duration: 0.7).repeatForever(autoreverses: false)) { spin = 360 }
-            } else {
-                withAnimation(Motion.quick) { spin = 0 }
-            }
-        }
+        .animation(Motion.snap, value: model.checking)
+        .animation(Motion.snap, value: model.checkResult)
+    }
+
+    private var label: String {
+        model.checking ? "Checking" : (model.checkResult ?? "Check for updates")
+    }
+
+    // the arrow spins while checking, then turns into a mark that says how it went
+    private var symbol: String {
+        guard model.checkResult != nil else { return "arrow.trianglehead.2.clockwise" }
+        if model.offline != nil { return "wifi.slash" }
+        if model.state?.updateAvailable == true { return "arrow.down.circle.fill" }
+        if model.state?.predownload != nil { return "arrow.down.circle" }
+        return "checkmark.circle.fill"
     }
 
     private var versionText: String {
@@ -330,7 +348,7 @@ private struct StatusPanel: View {
 
     @ViewBuilder
     private var accessory: some View {
-        if let activity = model.activity, activity.kind.cancellable {
+        if let activity = model.activity, activity.kind.cancellable, !(activity.kind == .launch && model.gameRunning) {
             MiniButton(symbol: "xmark", help: activity.kind == .launch ? "Stop the game" : "Stop, downloads resume later") {
                 model.cancel()
             }
@@ -475,7 +493,8 @@ private struct PrimaryButton: View {
         .buttonStyle(PressStyle())
         .disabled(!c.enabled)
         .onHover { h in withAnimation(Motion.quick) { hovering = h } }
-        .keyboardShortcut(.defaultAction)
+        // return should never be the thing that kills a running game
+        .keyboardShortcut(model.primary == .playing ? nil : .defaultAction)
         .animation(Motion.quick, value: model.primary)
         .animation(Motion.quick, value: model.activity?.paused)
         .help(pauseHelp)
@@ -487,6 +506,7 @@ private struct PrimaryButton: View {
     }
 
     private var pauseHelp: String {
+        if model.primary == .playing { return "Stop the game" }
         guard let a = model.activity else { return "" }
         if a.paused { return "Resume" }
         return a.pausable ? "Pause" : ""
@@ -500,7 +520,7 @@ private struct PrimaryButton: View {
         case .resume: ("RESUME", "arrow.clockwise", true)
         case .update: ("UPDATE", "arrow.triangle.2.circlepath", true)
         case .launch: ("START", "play.fill", true)
-        case .playing: ("PLAYING", "gamecontroller.fill", false)
+        case .playing: hovering ? ("STOP", "stop.fill", true) : ("PLAYING", "gamecontroller.fill", true)
         case .busy:
             if let a = model.activity, let percent {
                 if a.paused {

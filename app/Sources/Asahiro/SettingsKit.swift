@@ -12,8 +12,7 @@ struct SettingsGroup<Content: View>: View {
         VStack(alignment: .leading, spacing: Space.s) {
             if let header {
                 Text(header)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 13, weight: .bold))
                     .padding(.leading, Space.xs)
             }
             VStack(spacing: 0) {
@@ -67,8 +66,8 @@ struct SettingsRow<Trailing: View>: View {
             trailing
         }
         .padding(.horizontal, Space.m)
-        .padding(.vertical, subtitle == nil ? 9 : 8)
-        .frame(minHeight: 38)
+        .padding(.vertical, 9)
+        .frame(minHeight: 40)
         .opacity(enabled ? 1 : 0.45)
     }
 }
